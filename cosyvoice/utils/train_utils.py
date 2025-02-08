@@ -43,7 +43,10 @@ def init_distributed(args):
     logging.info('training on multiple gpus, this gpu {}'.format(local_rank) +
                  ', rank {}, world_size {}'.format(rank, world_size))
     if args.train_engine == 'torch_ddp':
-        torch.cuda.set_device(local_rank)
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+        elif torch.xpu.is_available():
+            torch.xpu.set_device(local_rank)
         dist.init_process_group(args.dist_backend)
     else:
         deepspeed.init_distributed(dist_backend=args.dist_backend)
@@ -95,8 +98,11 @@ def wrap_cuda_model(args, model):
     local_world_size = int(os.environ.get('LOCAL_WORLD_SIZE', 1))
     world_size = int(os.environ.get('WORLD_SIZE', 1))
     if args.train_engine == "torch_ddp":  # native pytorch ddp
-        assert (torch.cuda.is_available())
-        model.cuda()
+        assert (torch.cuda.is_available() or torch.xpu.is_available())
+        if torch.cuda.is_available():
+            model.cuda()
+        elif torch.xpu.is_available():
+            model.xpu()
         model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
     else:
         if int(os.environ.get('RANK', 0)) == 0:
@@ -246,10 +252,13 @@ def batch_forward(model, batch, scaler, info_dict):
     else:  # fp32
         dtype = torch.float32
 
-    if info_dict['train_engine'] == 'torch_ddp':
-        autocast = torch.cuda.amp.autocast(enabled=scaler is not None)
+    if torch.cuda.is_available():
+        if info_dict['train_engine'] == 'torch_ddp':
+            autocast = torch.cuda.amp.autocast(enabled=scaler is not None)
+        else:
+            autocast = torch.cuda.amp.autocast(enabled=True, dtype=dtype, cache_enabled=False)
     else:
-        autocast = torch.cuda.amp.autocast(enabled=True, dtype=dtype, cache_enabled=False)
+        autocast = None
 
     with autocast:
         info_dict['loss_dict'] = model(batch, device)

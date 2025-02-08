@@ -30,7 +30,10 @@ class Executor:
         self.step = 0
         self.epoch = 0
         self.rank = int(os.environ.get('RANK', 0))
-        self.device = torch.device('cuda:{}'.format(self.rank))
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda:{}'.format(self.rank))
+        elif torch.xpu.is_available():
+            self.device = torch.device('xpu:{}'.format(self.rank))
 
     def train_one_epoc(self, model, optimizer, scheduler, train_data_loader, cv_data_loader, writer, info_dict, scaler, group_join):
         ''' Train one epoch

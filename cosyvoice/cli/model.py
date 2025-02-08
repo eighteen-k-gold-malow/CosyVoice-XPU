@@ -21,8 +21,6 @@ from torch.nn import functional as F
 from contextlib import nullcontext
 import uuid
 from cosyvoice.utils.common import fade_in_out
-from cosyvoice.utils.file_utils import convert_onnx_to_trt
-
 
 class CosyVoiceModel:
 
@@ -31,7 +29,12 @@ class CosyVoiceModel:
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
                  fp16: bool):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
+        elif torch.cuda.is_available():
+            self.device = torch.device('xpu')
+        else:
+            self.device = 'cpu'
         self.llm = llm
         self.flow = flow
         self.hift = hift
@@ -57,7 +60,12 @@ class CosyVoiceModel:
         # rtf and decoding related
         self.stream_scale_factor = 1
         assert self.stream_scale_factor >= 1, 'stream_scale_factor should be greater than 1, change it according to your actual rtf'
-        self.llm_context = torch.cuda.stream(torch.cuda.Stream(self.device)) if torch.cuda.is_available() else nullcontext()
+        if torch.cuda.is_available():
+            self.llm_context = torch.cuda.stream(torch.cuda.Stream(self.device))
+        elif torch.xpu.is_available():
+            self.llm_context = torch.xpu.stream(torch.xpu.Stream(self.device))
+        else:
+            self.llm_context = nullcontext()
         self.lock = threading.Lock()
         # dict used to store session related variable
         self.tts_speech_token_dict = {}
@@ -87,6 +95,7 @@ class CosyVoiceModel:
     def load_trt(self, flow_decoder_estimator_model, flow_decoder_onnx_model, fp16):
         assert torch.cuda.is_available(), 'tensorrt only supports gpu!'
         if not os.path.exists(flow_decoder_estimator_model):
+            from cosyvoice.utils.file_utils import convert_onnx_to_trt
             convert_onnx_to_trt(flow_decoder_estimator_model, flow_decoder_onnx_model, fp16)
         if os.path.getsize(flow_decoder_estimator_model) == 0:
             raise ValueError('{} is empty file, delete it and export again!'.format(flow_decoder_estimator_model))
@@ -98,6 +107,18 @@ class CosyVoiceModel:
             raise ValueError('failed to load trt {}'.format(flow_decoder_estimator_model))
         self.flow.decoder.estimator = self.flow.decoder.estimator_engine.create_execution_context()
 
+    def load_ort(self, flow_decoder_estimator_model, flow_decoder_onnx_model, fp16):
+        if not os.path.exists(flow_decoder_estimator_model):
+            if fp16:
+                from cosyvoice.utils.file_utils import convert_onnx_f32_to_f16
+                convert_onnx_f32_to_f16(flow_decoder_estimator_model, flow_decoder_onnx_model)
+        if os.path.getsize(flow_decoder_estimator_model) == 0:
+            raise ValueError('{} is empty file, delete it and export again!'.format(flow_decoder_estimator_model))
+        del self.flow.decoder.estimator
+        import onnxruntime as ort
+        providers = ['DmlExecutionProvider' if torch.xpu.is_available() else 'CPUExecutionProvider']
+        self.flow.decoder.estimator = ort.InferenceSession(flow_decoder_estimator_model, providers=providers)
+    
     def llm_job(self, text, prompt_text, llm_prompt_speech_token, llm_embedding, uuid):
         with self.llm_context:
             if isinstance(text, Generator):
@@ -222,7 +243,10 @@ class CosyVoiceModel:
             self.mel_overlap_dict.pop(this_uuid)
             self.hift_cache_dict.pop(this_uuid)
             self.flow_cache_dict.pop(this_uuid)
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.xpu.is_available():
+            torch.xpu.empty_cache()
 
     def vc(self, source_speech_token, flow_prompt_speech_token, prompt_speech_feat, flow_embedding, stream=False, speed=1.0, **kwargs):
         # this_uuid is used to track variables related to this inference thread
@@ -276,7 +300,10 @@ class CosyVoiceModel:
             self.llm_end_dict.pop(this_uuid)
             self.mel_overlap_dict.pop(this_uuid)
             self.hift_cache_dict.pop(this_uuid)
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.xpu.is_available():
+            torch.xpu.empty_cache()
 
 
 class CosyVoice2Model(CosyVoiceModel):
@@ -286,7 +313,12 @@ class CosyVoice2Model(CosyVoiceModel):
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
                  fp16: bool):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
+        elif torch.xpu.is_available():
+            self.device = torch.device('xpu')
+        else:
+            self.device = 'cpu'
         self.llm = llm
         self.flow = flow
         self.hift = hift
@@ -307,7 +339,12 @@ class CosyVoice2Model(CosyVoiceModel):
         self.speech_window = np.hamming(2 * self.source_cache_len)
         # rtf and decoding related
         self.stream_scale_factor = 1
-        self.llm_context = torch.cuda.stream(torch.cuda.Stream(self.device)) if torch.cuda.is_available() else nullcontext()
+        if torch.cuda.is_available():
+            self.llm_context = torch.cuda.stream(torch.cuda.Stream(self.device))
+        elif torch.xpu.is_available():
+            self.llm_context = torch.xpu.stream(torch.xpu.Stream(self.device))
+        else:
+            self.llm_context = nullcontext()
         self.lock = threading.Lock()
         # dict used to store session related variable
         self.tts_speech_token_dict = {}
@@ -408,4 +445,7 @@ class CosyVoice2Model(CosyVoiceModel):
         with self.lock:
             self.tts_speech_token_dict.pop(this_uuid)
             self.llm_end_dict.pop(this_uuid)
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.xpu.is_available():
+            torch.xpu.empty_cache()

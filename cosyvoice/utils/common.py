@@ -152,8 +152,10 @@ def set_all_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    elif torch.xpu.is_available():
+        torch.xpu.manual_seed_all(seed)
 
 def mask_to_bias(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     assert mask.dtype == torch.bool

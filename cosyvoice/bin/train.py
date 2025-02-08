@@ -150,7 +150,8 @@ def main():
     executor.step = start_step
 
     # Init scaler, used for pytorch amp mixed precision training
-    scaler = torch.cuda.amp.GradScaler() if args.use_amp else None
+    scaler = torch.cuda.amp.GradScaler() if args.use_amp and torch.cuda.is_available() else None
+
     print('start step {} start epoch {}'.format(start_step, start_epoch))
     # Start training loop
     for epoch in range(start_epoch + 1, info_dict['max_epoch']):

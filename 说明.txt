@@ -1,0 +1,31 @@
+
+运行环境：
+    windows 11
+    python 3.12.8
+    pytorch 2.5.1 (intel+xpu)
+    onnxruntime-directml (intel+xpu)
+
+    其他环境我没测试, 理论上是兼容cuda的, 我并没有修改cuda代码, 只是把linux的代码改成windows的了
+    WeTextProcessing 改成 wetext, 还修改了use_ttsfrd=False
+
+
+1. 安装conda环境
+    conda install libuv jpeg libpng libjpeg-turbo libtiff
+    pip install -r requirements_xpu.txt
+
+    把jpeg8.dll和libpng16.dll复制到system32目录
+
+
+2. 安装ffmpeg并添加系统环境变量PATH
+
+
+3. 下载模型到pretrained_models目录
+
+
+4. 修改代码(其实load_jit和load_trt不开启, 默认会加载LLM模型, xpu不建议开启load_trt=True,因为onnxruntime每次要经过xx.cpu()numpy()转换)
+    下面的load_trt==True, 默认为cuda的tensorrt, 如果没有cuda, 有intel显卡xpu就自动加载flow.decoder.estimator.fp32.onnx模型, 注意fp16不能设置为True,因为onnx f32模型无法转到fp16, 如果是cuda就加载flow.decoder.estimator.***.plan模型
+    CosyVoice(args.model_dir, load_jit=False, load_trt=True, fp16=False)
+    CosyVoice2(args.model_dir, load_jit=False, load_trt=True,fp16=False)
+
+
+5. 启动python webui.py

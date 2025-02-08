@@ -87,3 +87,10 @@ def convert_onnx_to_trt(trt_model, onnx_model, fp16):
     # save trt engine
     with open(trt_model, "wb") as f:
         f.write(engine_bytes)
+
+
+def convert_onnx_f32_to_f16(save_onnx_model, onnx_model):
+    import onnx
+    from onnxruntime.transformers.float16 import convert_float_to_float16
+    model = onnx.load(onnx_model)
+    onnx.save(convert_float_to_float16(model=model), save_onnx_model)

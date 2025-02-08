@@ -57,8 +57,17 @@ def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 
     # Init cosyvoice models from configs
-    use_cuda = args.gpu >= 0 and torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
+    use_cuda = args.gpu >= 0 and (torch.cuda.is_available() or torch.xpu.is_available())
+
+    device = None
+    if use_cuda:
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        elif torch.xpu.is_available():
+            device = torch.device('xpu')
+    
+    if device is None:
+        device =  torch.device('cpu')
     with open(args.config, 'r') as f:
         configs = load_hyperpyyaml(f)
 

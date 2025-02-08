@@ -62,7 +62,12 @@ if __name__ == "__main__":
     option = onnxruntime.SessionOptions()
     option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     option.intra_op_num_threads = 1
-    providers = ["CUDAExecutionProvider"]
+    if torch.cuda.is_available():
+        providers = ["CUDAExecutionProvider"]
+    elif torch.xpu.is_available():
+        providers = ["DmlExecutionProvider"]
+    else:
+        providers = ["CPUExecutionProvider"]
     ort_session = onnxruntime.InferenceSession(args.onnx_path, sess_options=option, providers=providers)
     executor = ThreadPoolExecutor(max_workers=args.num_thread)
 

@@ -24,6 +24,8 @@ import torchaudio
 import os
 import re
 import inflect
+
+'''
 try:
     import ttsfrd
     use_ttsfrd = True
@@ -32,6 +34,13 @@ except ImportError:
     from tn.chinese.normalizer import Normalizer as ZhNormalizer
     from tn.english.normalizer import Normalizer as EnNormalizer
     use_ttsfrd = False
+'''
+
+
+
+from wetext import Normalizer
+use_ttsfrd = False # 只支持linux
+
 from cosyvoice.utils.file_utils import logging
 from cosyvoice.utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, split_paragraph, is_only_punctuation
 
@@ -47,14 +56,25 @@ class CosyVoiceFrontEnd:
                  allowed_special: str = 'all'):
         self.tokenizer = get_tokenizer()
         self.feat_extractor = feat_extractor
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
+        if torch.xpu.is_available():
+            self.device = torch.device('xpu')
+        else:
+            self.device = 'cpu'
         option = onnxruntime.SessionOptions()
         option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         option.intra_op_num_threads = 1
         self.campplus_session = onnxruntime.InferenceSession(campplus_model, sess_options=option, providers=["CPUExecutionProvider"])
-        self.speech_tokenizer_session = onnxruntime.InferenceSession(speech_tokenizer_model, sess_options=option,
-                                                                     providers=["CUDAExecutionProvider" if torch.cuda.is_available() else
-                                                                                "CPUExecutionProvider"])
+        if torch.cuda.is_available():
+            self.speech_tokenizer_session = onnxruntime.InferenceSession(speech_tokenizer_model, sess_options=option,
+                                                                        providers=["CUDAExecutionProvider"])
+        elif torch.xpu.is_available():
+            self.speech_tokenizer_session = onnxruntime.InferenceSession(speech_tokenizer_model, sess_options=option,
+                                                                        providers=["DmlExecutionProvider"])
+        else:
+            self.speech_tokenizer_session = onnxruntime.InferenceSession(speech_tokenizer_model, sess_options=option,
+                                                                        providers=["CPUExecutionProvider"])
         if os.path.exists(spk2info):
             self.spk2info = torch.load(spk2info, map_location=self.device)
         else:
@@ -68,8 +88,12 @@ class CosyVoiceFrontEnd:
                 'failed to initialize ttsfrd resource'
             self.frd.set_lang_type('pinyinvg')
         else:
+            '''
             self.zh_tn_model = ZhNormalizer(remove_erhua=False, full_to_half=False, overwrite_cache=True)
             self.en_tn_model = EnNormalizer()
+            '''
+            self.zh_tn_model = Normalizer(lang="zh", operator="tn", remove_erhua=False)
+            self.en_tn_model = Normalizer(lang="en", operator="tn")
             self.inflect_parser = inflect.engine()
 
     def _extract_text_token(self, text):

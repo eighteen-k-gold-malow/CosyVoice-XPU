@@ -126,20 +126,35 @@ class ConditionalCFM(BASECFM):
             return self.estimator.forward(x, mask, mu, t, spks, cond)
         else:
             with self.lock:
-                self.estimator.set_input_shape('x', (2, 80, x.size(2)))
-                self.estimator.set_input_shape('mask', (2, 1, x.size(2)))
-                self.estimator.set_input_shape('mu', (2, 80, x.size(2)))
-                self.estimator.set_input_shape('t', (2,))
-                self.estimator.set_input_shape('spks', (2, 80))
-                self.estimator.set_input_shape('cond', (2, 80, x.size(2)))
-                # run trt engine
-                self.estimator.execute_v2([x.contiguous().data_ptr(),
-                                           mask.contiguous().data_ptr(),
-                                           mu.contiguous().data_ptr(),
-                                           t.contiguous().data_ptr(),
-                                           spks.contiguous().data_ptr(),
-                                           cond.contiguous().data_ptr(),
-                                           x.data_ptr()])
+                if torch.cuda.is_available():
+                    self.estimator.set_input_shape('x', (2, 80, x.size(2)))
+                    self.estimator.set_input_shape('mask', (2, 1, x.size(2)))
+                    self.estimator.set_input_shape('mu', (2, 80, x.size(2)))
+                    self.estimator.set_input_shape('t', (2,))
+                    self.estimator.set_input_shape('spks', (2, 80))
+                    self.estimator.set_input_shape('cond', (2, 80, x.size(2)))
+                    # run trt engine
+                    self.estimator.execute_v2([x.contiguous().data_ptr(),
+                                            mask.contiguous().data_ptr(),
+                                            mu.contiguous().data_ptr(),
+                                            t.contiguous().data_ptr(),
+                                            spks.contiguous().data_ptr(),
+                                            cond.contiguous().data_ptr(),
+                                            x.data_ptr()])
+                elif torch.xpu.is_available():
+                    outputs = self.estimator.run(
+                        [
+                            'dphi_dt'
+                        ],
+                        {
+                            'x': x.cpu().numpy(),
+                            'mask': mask.cpu().numpy(),
+                            'mu': mu.cpu().numpy(),
+                            't': t.cpu().numpy(),
+                            'spks': spks.cpu().numpy(),
+                            'cond': cond.cpu().numpy(),
+                        })
+                    x = torch.from_numpy(outputs[0]).to(dtype=x.dtype, device=x.device)
             return x
 
     def compute_loss(self, x1, mask, mu, spks=None, cond=None):
