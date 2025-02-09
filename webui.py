@@ -185,12 +185,12 @@ if __name__ == '__main__':
                         help='local path or modelscope repo id')
     args = parser.parse_args()
 
-    # load_trt 不仅支持cuda, 还支持xpu(xpu使用onnxruntime加载,不支持fp16)
+    # load_trt 不仅支持cuda, 还支持xpu(xpu使用onnxruntime加载,不支持fp16, cuda不支持f32)
     try:
-        cosyvoice = CosyVoice(args.model_dir, load_trt=True, fp16=False)
+        cosyvoice = CosyVoice(args.model_dir, load_trt=True, fp16=True)
     except Exception:
         try:
-            cosyvoice = CosyVoice2(args.model_dir, load_trt=True,fp16=False)
+            cosyvoice = CosyVoice2(args.model_dir, load_trt=True,fp16=True)
         except Exception:
             raise TypeError('no valid model_type!')
 
